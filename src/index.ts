@@ -28,14 +28,21 @@ async function startServer() {
       environment: process.env.NODE_ENV || 'development',
     }, 'Starting ClawPrice API');
 
-    // Initialize cache service
-    logger.info('Initializing Redis cache service...');
-    cacheService = new CacheService();
-    await new Promise<void>((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, 100); // Small delay for connection
-    });
+    // Initialize cache service (optional - only if REDIS_URL is set)
+    const useRedis = !!process.env.REDIS_URL && process.env.REDIS_URL.trim() !== '';
+    
+    if (useRedis) {
+      logger.info('Initializing Redis cache service...');
+      cacheService = new CacheService();
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve();
+        }, 100); // Small delay for connection
+      });
+    } else {
+      logger.warn('REDIS_URL not set - running in degraded mode without cache');
+      cacheService = null;
+    }
 
     // Initialize Zapper service
     logger.info('Initializing Zapper API service...');
