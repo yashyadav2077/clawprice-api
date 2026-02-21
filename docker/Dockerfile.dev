@@ -1,0 +1,26 @@
+# Development Dockerfile
+FROM node:18-alpine
+
+# Install dependencies for development
+RUN apk add --no-cache git
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev)
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Build TypeScript
+RUN npm run build
+
+# Expose port
+EXPOSE 3000
+
+# Start application in development mode
+CMD ["npm", "run", "dev"]

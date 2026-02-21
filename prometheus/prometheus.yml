@@ -1,0 +1,14 @@
+# Prometheus configuration for ClawPrice API
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'clawprice-api'
+
+scrape_configs:
+  - job_name: 'clawprice-api'
+    static_configs:
+      - targets: ['api:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s

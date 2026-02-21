@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: clawprice-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - clawprice-network
+
+  # API server
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: clawprice-api
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=info
+      - X402_COLLECTION_ADDRESS=${X402_COLLECTION_ADDRESS:-0x0000000000000000000000000000000000000000}
+      - BASE_RPC_URL=https://mainnet.base.org
+      - ZAPPER_API_KEY=${ZAPPER_API_KEY:-}
+      - ZAPPER_API_URL=https://api.zapper.fi/v2
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - clawprice-network
+    volumes:
+      - ../src:/app/src
+      - ../tests:/app/tests
+
+  # Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: clawprice-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - clawprice-network
+
+networks:
+  clawprice-network:
+    driver: bridge
