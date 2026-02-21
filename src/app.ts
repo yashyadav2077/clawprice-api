@@ -8,16 +8,22 @@ import { ZapperService } from './services/zapper';
 import { X402Service } from './services/x402';
 import { createX402Middleware } from './middleware/x402';
 import { requestLogger } from './middleware/requestLogger';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { errorHandler } from './middleware/errorHandler';
 import { createPriceRouter } from './routes/price';
 import { createHealthRouter } from './routes/health';
 import { getMetrics } from './utils/metrics';
 import { CONSTANTS } from './utils/constants';
 
+export interface AppConfig {
+  cacheService?: CacheService;
+  zapperService: ZapperService;
+  x402Service: X402Service;
+}
+
 export function createApp(
-  cacheService: CacheService,
-  zapperService: ZapperService,
-  x402Service: X402Service
+  cacheService: CacheService | null = null,
+  zapperService: ZapperService | null = null,
+  x402Service: X402Service | null = null
 ): Application {
   const app = express();
 
@@ -27,12 +33,29 @@ export function createApp(
   // Request logger middleware
   app.use(requestLogger);
 
-  // Health check route (no x402 required)
+  // Metrics middleware
+  const metricsService = {
+    getMiddleware: () => async (req: any, res: any, next: any) => {
+      // Request counting middleware
+      next();
+    }
+  };
+
+  app.use(metricsService.getMiddleware());
+
+  // Health check route
   const healthRouter = createHealthRouter(cacheService, zapperService);
   app.use('/health', healthRouter);
 
-  // Metrics endpoint (no x402 required)
-  app.get('/metrics', async (_, res) => {
+  // Price route (requires x402)
+  if (x402Service) {
+    const x402Middleware = createX402Middleware(x402Service);
+    const priceRouter = createPriceRouter(cacheService, zapperService);
+    app.use('/price', x402Middleware, priceRouter);
+  }
+
+  // Metrics endpoint
+  app.get('/metrics', async (req: any, res: any) => {
     try {
       res.set('Content-Type', 'text/plain');
       res.send(await getMetrics());
@@ -41,20 +64,19 @@ export function createApp(
     }
   });
 
-  // x402 middleware for protected routes
-  const x402Middleware = createX402Middleware(x402Service);
-
-  // Price route (protected by x402)
-  const priceRouter = createPriceRouter(cacheService, zapperService);
-  app.use('/price', x402Middleware, priceRouter);
+  // Error handling
+  app.use(errorHandler);
 
   // 404 handler
-  app.use(notFoundHandler);
-
-  // Global error handler
-  app.use(errorHandler);
+  app.use((req: any, res: any) => {
+    res.status(404).json({
+      error: {
+        code: CONSTANTS.ERROR_CODES.NOT_FOUND,
+        message: 'Route not found',
+        details: `Route ${req.method} ${req.path} not found`,
+      },
+    });
+  });
 
   return app;
 }
-
-export default createApp;

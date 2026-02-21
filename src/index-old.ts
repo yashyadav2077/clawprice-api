@@ -15,10 +15,6 @@ dotenv.config();
 
 const PORT = parseInt(process.env.PORT || CONSTANTS.DEFAULT_PORT.toString(), 10);
 
-// Initialize services (Redis disabled for now)
-let zapperService: ZapperService;
-let x402Service: X402Service;
-
 async function startServer() {
   try {
     logger.info({
@@ -27,19 +23,33 @@ async function startServer() {
       environment: process.env.NODE_ENV || 'development',
     }, 'Starting ClawPrice API');
 
-    // Redis disabled - running in degraded mode without cache
-    logger.warn('Redis disabled - running in degraded mode without cache');
+    // Check for Redis configuration
+    const useRedis = !!process.env.REDIS_URL && process.env.REDIS_URL.trim() !== '';
+    
+    let cacheService: CacheService | null = null;
+    if (useRedis) {
+      logger.info('Initializing Redis cache service...');
+      cacheService = new CacheService();
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve();
+        }, 100); // Small delay for connection
+      });
+    } else {
+      logger.warn('REDIS_URL not set - running in degraded mode without cache');
+      cacheService = null;
+    }
 
     // Initialize Zapper service
     logger.info('Initializing Zapper API service...');
-    zapperService = new ZapperService();
+    const zapperService = new ZapperService();
 
-    // Initialize x402 service (disabled for now)
-    logger.warn('X402_COLLECTION_ADDRESS not set - x402 payment verification disabled');
-    x402Service = null as any;
+    // Initialize x402 service
+    logger.info('Initializing x402 payment service...');
+    const x402Service = new X402Service(cacheService);
 
     // Create Express app
-    const app = createApp(null, zapperService, x402Service);
+    const app = createApp(cacheService, zapperService, x402Service);
 
     // Start HTTP server
     const server = app.listen(PORT, () => {
@@ -60,6 +70,12 @@ async function startServer() {
         }
 
         logger.info('HTTP server closed');
+
+        // Close Redis connection
+        if (cacheService) {
+          await cacheService.quit();
+          logger.info('Redis connection closed');
+        }
 
         process.exit(0);
       });

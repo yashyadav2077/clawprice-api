@@ -3,12 +3,11 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { CacheService } from '../services/cache';
 import { ZapperService } from '../services/zapper';
 import { HealthCheckResponse } from '../types';
 
 export function createHealthRouter(
-  cacheService: CacheService,
+  cacheService: any, // Made optional
   zapperService: ZapperService
 ): Router {
   const router = Router();
@@ -17,8 +16,25 @@ export function createHealthRouter(
    * GET /health - Health check endpoint
    */
   router.get('/', async (_: Request, res: Response): Promise<void> => {
-    const cacheStatus = await cacheService.checkHealth();
-    const zapperStatus = await zapperService.checkHealth();
+    // Check cache (if service provided)
+    let cacheStatus = 'disconnected';
+    if (cacheService && typeof cacheService.checkHealth === 'function') {
+      try {
+        cacheStatus = await cacheService.checkHealth();
+      } catch (error) {
+        cacheStatus = 'disconnected';
+      }
+    }
+
+    // Check Zapper (if service provided)
+    let zapperStatus = 'disconnected';
+    if (zapperService && typeof zapperService.checkHealth === 'function') {
+      try {
+        zapperStatus = await zapperService.checkHealth();
+      } catch (error) {
+        zapperStatus = 'disconnected';
+      }
+    }
 
     // Determine overall status
     let overallStatus: HealthCheckResponse['status'] = 'ok';
